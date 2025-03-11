@@ -1,13 +1,18 @@
-import json
 import os
+import json
 import socket
 import tkinter
 from tkinter import messagebox
-import pygame
 import customtkinter as ctk
 
 from config import AppConfig
-from manager import FileManager, LogManager, ThreadManager, TimeManager
+from manager import (
+    FileManager,
+    LogManager,
+    ThreadManager,
+    TimeManager,
+    SoundManager
+)
 
 class BaseApp:
     """Base class for GUI applications."""
@@ -15,27 +20,22 @@ class BaseApp:
     def __init__(self) -> None:
         """Initialize the base application."""
         self.root = ctk.CTk()
-        self.root.title(AppConfig.WINDOW_TITLE)
-        self.root.geometry(f'{AppConfig.WINDOW_WIDTH}x{AppConfig.WINDOW_HEIGHT}')
-        self.root.configure(font=(AppConfig.FONT_FAMILY, AppConfig.FONT_SIZE))
+        self.config = AppConfig()
+        self.directory = os.path.dirname(__file__)
+        self.resources_path = os.path.join(self.directory, self.config.resources_directory_name)
+
+    def configure_window(self) -> None:
+        """Configures the main window with title, size, and font settings."""
+        self.root.title(self.config.WINDOW_TITLE)
+        self.root.geometry(f'{self.config.WINDOW_WIDTH}x{self.config.WINDOW_HEIGHT}')
+        self.root.configure(font=(self.config.FONT_FAMILY, self.config.FONT_SIZE))
 
     def mainloop(self) -> None:
         """Run the application's main loop."""
         self.root.mainloop()
 
-class App(BaseApp):
-    """Main GUI class for the port scanner application."""
-
-    def __init__(self) -> None:
-        """Initialize the App with the main window."""
-        super().__init__()
-        AppConfig.apply_theme(self.root)
-        pygame.mixer.init()
-
-        self.results_dir = os.path.join(os.path.dirname(__file__), "results")
-        os.makedirs(self.results_dir, exist_ok=True)
-
-        # Create menu bar
+    def create_menu(self) -> None:
+        """Create a menu bar for the application."""
         self.menu_bar = tkinter.Menu(
             self.root,
             bg=AppConfig.COLORS["background"],
@@ -45,7 +45,8 @@ class App(BaseApp):
         )
         self.root.config(menu=self.menu_bar)
 
-        # File menu
+    def create_file_menu(self) -> None:
+        """Create a file menu for the application."""
         self.file_menu = tkinter.Menu(
             self.menu_bar,
             tearoff=0,
@@ -60,7 +61,8 @@ class App(BaseApp):
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Exit", command=self.root.quit)
 
-        # Settings menu
+    def create_settings_menu(self) -> None:
+        """Create a settings menu for the application."""
         self.settings_menu = tkinter.Menu(
             self.menu_bar,
             tearoff=0,
@@ -75,24 +77,38 @@ class App(BaseApp):
             command=lambda: AppConfig.toggle_theme()
         )
 
+class App(BaseApp):
+    """Main GUI class for the port scanner application."""
+
+    def __init__(self) -> None:
+        """Initialize the App with the main window."""
+        super().__init__()
+
+        self.sound_manager = SoundManager(self.resources_path)
+        self.thread_manager = ThreadManager()
+        self.time_manager = TimeManager()
+        self.log_manager = LogManager()
+        self.file_manager = FileManager()
+
+        self.config.apply_theme(self.root)
+
+        self.start_time = self.time_manager.get_current_time()
+        self.results_dir = os.path.join(self.directory, "results")
         self.local_ip = self.get_local_ip()
+        self.scanning = False
+        self.timeout = self.config.DEFAULT_TIMEOUT
+        self.threads = self.config.DEFAULT_THREADS
+        self.port_range = self.config.DEFAULT_PORT_RANGE
 
-        self.scanning = False  # Add scanning flag
-
-        self.timeout = AppConfig.DEFAULT_TIMEOUT
-        self.threads = AppConfig.DEFAULT_THREADS
-        self.port_range = AppConfig.DEFAULT_PORT_RANGE
-
-        self.thread_manager = ThreadManager()  # Initialize ThreadManager
-
+        os.makedirs(self.results_dir, exist_ok=True)
+        self.configure_window()
+        self.create_menu()
+        self.create_file_menu()
+        self.create_settings_menu()
         self.create_widgets()
-
-        # Check the initial IP address
         self.on_ip_change(self.local_ip)
-
-        # Log the application start time
-        self.start_time = TimeManager.get_current_time()
-        LogManager.log_message(self.general_logs, "Application started")
+        
+        self.log_manager.log_message(self.general_logs, "Application started")
 
     def get_local_ip(self) -> str:
         """Get the local IP address of the machine."""
@@ -313,8 +329,8 @@ class App(BaseApp):
         self.open_ports = []  # Initialize open_ports list
 
         # Log the start time
-        self.start_time = TimeManager.get_current_time()
-        LogManager.log_message(self.general_logs, "Scan started")
+        self.start_time = self.time_manager.get_current_time()
+        self.log_manager.log_message(self.general_logs, "Scan started")
 
         self.scan_range_label.configure(text=f"Scanning {target_ip} from port {start_port} to {end_port}...")
         self.scan_range_label.grid()  # Show scan range label
@@ -331,7 +347,7 @@ class App(BaseApp):
                     s.settimeout(0.1)
                     result = s.connect_ex((target_ip, port))
                     if result == 0:
-                        timestamp = TimeManager.get_formatted_time()
+                        timestamp = self.time_manager.get_formatted_time()
                         try:
                             service = socket.getservbyport(port)
                         except OSError:
@@ -339,10 +355,10 @@ class App(BaseApp):
                         self.open_ports_list.insert('end', f"{port}\n")
                         self.open_ports_list.see('end')
                         self.open_ports.append({'port': port, 'service': service, 'timestamp': timestamp})
-                        LogManager.log_message(self.general_logs, f"Port {port} ({service}) is open")
-                        self.play_port_detected_sound()
+                        self.log_manager.log_message(self.general_logs, f"Port {port} ({service}) is open")
+                        self.sound_manager.play_port_detected_sound()
             except Exception as e:
-                LogManager.log_message(self.general_logs, f"Error occurred while scanning port {port}: {str(e)}")
+                self.log_manager.log_message(self.general_logs, f"Error occurred while scanning port {port}: {str(e)}")
 
         def scan_ports() -> None:
             """Scan the ports in the given range."""
@@ -354,8 +370,8 @@ class App(BaseApp):
                 self.thread_manager.start_thread(scan_port, args=(port,))
 
                 # Update progress bar and scan range label
-                elapsed_time = TimeManager.get_elapsed_time(self.start_time)
-                estimated_time = TimeManager.estimate_remaining_time(elapsed_time, port - start_port + 1, total_ports)
+                elapsed_time = self.time_manager.get_elapsed_time(self.start_time)
+                estimated_time = self.time_manager.estimate_remaining_time(elapsed_time, port - start_port + 1, total_ports)
                 self.scan_range_label.configure(
                     text=f"Scanned {port - start_port + 1} of {total_ports} ports. "
                          f"Elapsed: {elapsed_time:.2f}s, Estimated: {estimated_time:.2f}s"
@@ -370,11 +386,11 @@ class App(BaseApp):
             self.thread_manager.stop_all_threads()
 
             if self.scanning:  # Check scanning flag
-                duration = TimeManager.calculate_duration(self.start_time, TimeManager.get_current_time())
+                duration = self.time_manager.calculate_duration(self.start_time, self.time_manager.get_current_time())
                 self.scan_range_label.configure(text="Scan completed.")
-                LogManager.log_message(self.general_logs, "Scan completed")
-                LogManager.log_message(self.general_logs, f"Scan duration: {duration:.2f} seconds")
-                self.play_scan_completed_sound()
+                self.log_manager.log_message(self.general_logs, "Scan completed")
+                self.log_manager.log_message(self.general_logs, f"Scan duration: {duration:.2f} seconds")
+                self.sound_manager.play_scan_completed_sound()
             self.scanning = False  # Set scanning flag to False
             self.stop_button.pack_forget()
             self.stop_button.configure(state="disabled")
@@ -416,7 +432,7 @@ class App(BaseApp):
 
         default_filename = (
             f"scan_results_{self.ip_entry.get()}_"
-            f"{TimeManager.get_formatted_time().replace(' ', '_').replace(':', '-')}"
+            f"{self.time_manager.get_formatted_time().replace(' ', '_').replace(':', '-')}"
         )
         file_path = os.path.join(self.results_dir, f"{default_filename}.{file_type}")
 
@@ -429,18 +445,18 @@ class App(BaseApp):
             'end_port': current_end_port,
             'open_ports': current_open_ports,
             'logs': logs,
-            'timestamp': TimeManager.get_formatted_time()
+            'timestamp': self.time_manager.get_formatted_time()
         }
 
         if file_path.endswith('.json'):
-            FileManager.save_to_file(file_path, json.dumps(results, indent=4))
+            self.file_manager.save_to_file(file_path, json.dumps(results, indent=4))
             messagebox.showinfo("Success", f"Results saved successfully to {file_path}")
         else:
             results_str = (
                 f"=== Scan Results ===\n"
                 f"Target IP: {self.ip_entry.get()}\n"
                 f"Scan Range: {self.start_port_entry.get()} - {current_end_port}\n"
-                f"Timestamp: {TimeManager.get_formatted_time()}\n"
+                f"Timestamp: {self.time_manager.get_formatted_time()}\n"
                 f"Status: {'In Progress' if self.scanning else 'Completed'}\n\n"
                 "=== Open Ports ===\n"
             )
@@ -453,19 +469,8 @@ class App(BaseApp):
                 f"Total Ports Scanned: {current_end_port - int(self.start_port_entry.get()) + 1}\n"
                 f"Open Ports Found: {len(current_open_ports)}\n"
             )
-            FileManager.save_to_file(file_path, results_str)
+            self.file_manager.save_to_file(file_path, results_str)
             messagebox.showinfo("Success", f"Results saved successfully to {file_path}")
-
-    def play_port_detected_sound(self):
-        """Plays port detected sound."""
-        pygame.mixer.music.stop()  # Önceki sesi durdur
-        pygame.mixer.music.load('resources/port_detected.mp3')
-        pygame.mixer.music.play()
-
-    def play_scan_completed_sound(self):
-        """Plays scan completed sound."""
-        pygame.mixer.music.load('resources/scan_completed.mp3')
-        pygame.mixer.music.play()
 
 if __name__ == "__main__":
     try:

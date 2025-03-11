@@ -21,6 +21,7 @@ class AppConfig:
         "appearance_mode": "dark",
         "color_theme": "dark-blue"
     }
+    resources_directory_name = 'resources'
 
     # Scan Settings
     DEFAULT_TIMEOUT = 1.0

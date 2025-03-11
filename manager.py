@@ -1,8 +1,30 @@
+import os
 import time
 import threading
 from datetime import datetime
+import pygame
 
 from config import AppConfig
+
+class SoundManager:
+    """Manages sound effects for the application."""
+
+    def __init__(self, resources_path: str):
+        """Initialize the SoundManager."""
+        self.PORT_DETECTED_SOUND_PATH = os.path.join(resources_path, 'port_detected.mp3')
+        self.SCAN_COMPLETED_SOUND_PATH = os.path.join(resources_path, 'scan_completed.mp3')
+        pygame.mixer.init()
+
+    def play_port_detected_sound(self):
+        """Plays port detected sound."""
+        pygame.mixer.music.stop()  # Önceki sesi durdur
+        pygame.mixer.music.load(self.PORT_DETECTED_SOUND_PATH)
+        pygame.mixer.music.play()
+
+    def play_scan_completed_sound(self):
+        """Plays scan completed sound."""
+        pygame.mixer.music.load(self.SCAN_COMPLETED_SOUND_PATH)
+        pygame.mixer.music.play()
 
 class TimeManager:
     """Class to manage timestamps and duration calculations."""
