@@ -50,6 +50,4 @@ class AppConfig:
     @staticmethod
     def toggle_theme() -> None:
         """Toggle between dark and light themes."""
-        current_theme = ctk.get_appearance_mode()
-        new_theme = "Dark" if current_theme == "Light" else "Light"
-        ctk.set_appearance_mode(new_theme)
+        ctk.set_appearance_mode("Dark" if ctk.get_appearance_mode() == "Light" else "Light")
